@@ -1,2 +1,3 @@
-# InfinityHookPro
-InfinityHookPro: Make InfinityHook great great again
+# InfinityHookProMax
+
+InfinityHookProMax: Make InfinityHook great great again
