@@ -57,7 +57,7 @@ typedef struct _EVENT_TRACE_PROPERTIES
 /* 
  * This struct is copied from original infinity hook
  */
-typedef struct _CKCL_TRACE_PROPERIES : EVENT_TRACE_PROPERTIES
+typedef struct _CKCL_TRACE_PROPERTIES : EVENT_TRACE_PROPERTIES
 {
 	ULONG64 Unknown[3];
 	UNICODE_STRING ProviderName;
