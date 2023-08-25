@@ -9,34 +9,35 @@
       <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
       <Extensions>h;hpp;hxx;hm;inl;inc;xsd</Extensions>
     </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
     <Filter Include="Driver Files">
       <UniqueIdentifier>{8E41214B-6785-4CFE-B992-037D68949A14}</UniqueIdentifier>
       <Extensions>inf;inv;inx;mof;mc;</Extensions>
     </Filter>
     <Filter Include="hde">
-      <UniqueIdentifier>{effae938-02ce-456b-a490-7714a0f6d15e}</UniqueIdentifier>
+      <UniqueIdentifier>{b88ce192-4548-434d-bebf-58352049965c}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <Inf Include="infinity_hook_pro.inf">
+    <Inf Include="infinity_hook_pro_max.inf">
       <Filter>Driver Files</Filter>
     </Inf>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="hde\hde64.cpp">
       <Filter>hde</Filter>
+    </ClCompile>
+    <ClCompile Include="main.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="hook.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="imports.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="hde\hde64.h">
       <Filter>hde</Filter>
     </ClInclude>
@@ -46,10 +47,13 @@
     <ClInclude Include="hde\table64.h">
       <Filter>hde</Filter>
     </ClInclude>
-    <ClInclude Include="hook.hpp">
+    <ClInclude Include="utils.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="utils.hpp">
+    <ClInclude Include="imports.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="hook.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="headers.hpp">
