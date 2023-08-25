@@ -4,7 +4,7 @@
 
 namespace k_utils
 {
-	// 获取系统版本号
+	// Get system build number
 	unsigned long get_system_build_number()
 	{
 		unsigned long number = 0;
@@ -14,7 +14,7 @@ namespace k_utils
 		return number;
 	}
 
-	// 获取指定模块基址
+	// Get module address
 	unsigned long long get_module_address(const char* name, unsigned long* size)
 	{
 		unsigned long long result = 0;
@@ -46,7 +46,7 @@ namespace k_utils
 		return result;
 	}
 
-	// 模式匹配
+	// Match pattern
 	bool pattern_check(const char* data, const char* pattern, const char* mask)
 	{
 		size_t len = strlen(mask);
@@ -62,7 +62,7 @@ namespace k_utils
 		return true;
 	}
 
-	// 模式查找
+	// Find pattern
 	unsigned long long find_pattern(unsigned long long addr, unsigned long size, const char* pattern, const char* mask)
 	{
 		size -= (unsigned long)strlen(mask);
@@ -76,7 +76,7 @@ namespace k_utils
 		return 0;
 	}
 
-	// 查找映像模式
+	// Find pattern in image
 	unsigned long long find_pattern_image(unsigned long long addr, const char* pattern, const char* mask, const char* name = ".text")
 	{
 		PIMAGE_DOS_HEADER dos = (PIMAGE_DOS_HEADER)addr;
@@ -100,7 +100,7 @@ namespace k_utils
 		return 0;
 	}
 
-	// 获取映像地址
+	// Get image address
 	unsigned long long get_image_address(unsigned long long addr, const char* name, unsigned long* size)
 	{
 		PIMAGE_DOS_HEADER dos = (PIMAGE_DOS_HEADER)addr;
@@ -124,42 +124,42 @@ namespace k_utils
 		return 0;
 	}
 
-	// 获取SSDT表地址
+	// Get ssdt/syscall entry address
 	void* get_syscall_entry(unsigned long long ntoskrnl)
 	{
 		if (!ntoskrnl) return nullptr;
 
 		/*
-		2018年的内核页表隔离补丁 https://bbs.pediy.com/thread-223805.htm
-		没有补丁的话就是KiSystemCall64
-		*/
+		 * 2018 kernel page table isolation patch https://bbs.pediy.com/thread-223805.htm
+		 * Without the patch, it is KiSystemCall64
+		 */
 #define IA32_LSTAR_MSR 0xC0000082
 		void* syscall_entry = (void*)__readmsr(IA32_LSTAR_MSR);
 
-		// 没有补丁过,直接返回KiSystemCall64就行
+		// If no patch, just return KiSystemCall64
 		unsigned long section_size = 0;
 		unsigned long long KVASCODE = get_image_address(ntoskrnl, "KVASCODE", &section_size);
 		if (!KVASCODE) return syscall_entry;
 
-		// KiSystemCall64还是在区域内,也是直接返回
+		// If KiSystemCall64 is also correct, return directly
 		if (!(syscall_entry >= (void*)KVASCODE && syscall_entry < (void*)(KVASCODE + section_size))) return syscall_entry;
 
-		// 来到这一步那就是KiSystemCall64Shadow,代表打补丁了
+		// If KiSystemCall64Shadow, it means that the patch is applied
 		hde64s hde_info{ 0 };
 		for (char* ki_system_service_user = (char*)syscall_entry; ; ki_system_service_user += hde_info.len)
 		{
-			// 反汇编
+			// Disasm
 			if (!hde64_disasm(ki_system_service_user, &hde_info)) break;
 
-			// 我们要查找jmp
+			// Find jmp
 #define OPCODE_JMP_NEAR 0xE9
 			if (hde_info.opcode != OPCODE_JMP_NEAR) continue;
 
-			// 忽略在KVASCODE节区内的jmp指令
+			// Ignore jmp instructions in the KVASCODE section
 			void* possible_syscall_entry = (void*)((long long)ki_system_service_user + (int)hde_info.len + (int)hde_info.imm.imm32);
 			if (possible_syscall_entry >= (void*)KVASCODE && possible_syscall_entry < (void*)((unsigned long long)KVASCODE + section_size)) continue;
 
-			// 发现KiSystemServiceUser
+			// Found KiSystemServiceUser
 			syscall_entry = possible_syscall_entry;
 			break;
 		}
@@ -167,12 +167,15 @@ namespace k_utils
 		return syscall_entry;
 	}
 
-	// 休眠函数
+	// Sleep function
 	void sleep(long msec)
 	{
 		LARGE_INTEGER integer{ 0 };
 
-		// 这里的负数表示的是相对时间，正数拒说表示绝对时间，我没试出效果。单位是100nm,此处乘以10000是让单位变为s,很多代码都是乘以10,即传入的单位是ms;
+		// The negative number here means relative time, and the positive number means
+		// absolute time. But I didn't see much difference. The unit is 100nm. The
+		// multiplication by 10000 here is to make the unit become s. Many codes are
+		// multiplied by 10, that is, the unit passed in is ms;
 		integer.QuadPart = -10000;
 		integer.QuadPart *= msec;
 		KeDelayExecutionThread(KernelMode, FALSE, &integer);

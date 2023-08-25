@@ -7,7 +7,7 @@ FNtCreateFile g_NtCreateFile = 0;
 
 NTSTATUS MyNtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes, PIO_STATUS_BLOCK IoStatusBlock, PLARGE_INTEGER AllocationSize, ULONG FileAttributes, ULONG ShareAccess, ULONG CreateDisposition, ULONG CreateOptions, PVOID EaBuffer, ULONG EaLength)
 {
-	// NtCreateFile 的调用方必须在 IRQL = PASSIVE_LEVEL且 启用了特殊内核 APC 的情况下运行
+	// The caller of NtCreateFile must be running at IRQL = PASSIVE_LEVEL and with special kernel APCs enabled.
 	if (KeGetCurrentIrql() != PASSIVE_LEVEL) return g_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
 	if (ExGetPreviousMode() == KernelMode) return g_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
 	if (PsGetProcessSessionId(IoGetCurrentProcess()) == 0) return g_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
@@ -51,9 +51,9 @@ VOID DriverUnload(PDRIVER_OBJECT driver)
 
 	k_hook::stop();
 
-	// 这里需要注意,确保系统的执行点已经不再当前驱动里面了
-	// 比如当前驱动卸载掉了,但是你挂钩的MyNtCreateFile还在执行for操作,当然蓝屏啊
-	// 这里的休眠10秒手段可以直接改进
+	// Here we need to make sure that the execution point of the system is no
+	// longer in the current driver
+	// The 10-second sleep method here can be improved
 	LARGE_INTEGER integer{ 0 };
 	integer.QuadPart = -10000;
 	integer.QuadPart *= 10000;
@@ -75,6 +75,6 @@ DriverEntry(
 	RtlInitUnicodeString(&str, name);
 	g_NtCreateFile = (FNtCreateFile)MmGetSystemRoutineAddress(&str);
 
-	// 初始化并挂钩
+	// Initialize and start hook
 	return k_hook::initialize(ssdt_call_back) && k_hook::start() ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 }
