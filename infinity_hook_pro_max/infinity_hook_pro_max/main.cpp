@@ -1,9 +1,10 @@
-#pragma warning(disable: 4996)
 #include "hook.hpp"
 #include "imports.hpp"
 
 typedef NTSTATUS(*FNtCreateFile)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES, PIO_STATUS_BLOCK, PLARGE_INTEGER, ULONG, ULONG, ULONG, ULONG, PVOID, ULONG);
+
 FNtCreateFile g_NtCreateFile = 0;
+
 NTSTATUS MyNtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes, PIO_STATUS_BLOCK IoStatusBlock, PLARGE_INTEGER AllocationSize, ULONG FileAttributes, ULONG ShareAccess, ULONG CreateDisposition, ULONG CreateOptions, PVOID EaBuffer, ULONG EaLength)
 {
 	// NtCreateFile 的调用方必须在 IRQL = PASSIVE_LEVEL且 启用了特殊内核 APC 的情况下运行
@@ -15,13 +16,13 @@ NTSTATUS MyNtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, POBJECT_A
 		ObjectAttributes->ObjectName &&
 		ObjectAttributes->ObjectName->Buffer)
 	{
-		wchar_t* name = (wchar_t*)ExAllocatePool(NonPagedPool, ObjectAttributes->ObjectName->Length + sizeof(wchar_t));
+		wchar_t* name = (wchar_t*)ExAllocatePool2(POOL_FLAG_NON_PAGED, ObjectAttributes->ObjectName->Length + sizeof(wchar_t), 'VMON');
 		if (name)
 		{
 			RtlZeroMemory(name, ObjectAttributes->ObjectName->Length + sizeof(wchar_t));
 			RtlCopyMemory(name, ObjectAttributes->ObjectName->Buffer, ObjectAttributes->ObjectName->Length);
 
-			if (wcsstr(name, L"My\\Certificates") && !wcsstr(name, L".ini"))
+			if (wcsstr(name, L"secret"))
 			{
 				// DbgPrintEx(0, 0, "Call %ws \n", name);
 

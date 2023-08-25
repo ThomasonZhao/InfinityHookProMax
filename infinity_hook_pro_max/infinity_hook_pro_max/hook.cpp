@@ -1,5 +1,4 @@
-﻿#pragma warning(disable: 4201 4819 4311 4302 4996)
-#include "hook.hpp"
+﻿#include "hook.hpp"
 #include "utils.hpp"
 
 /* 微软官方文档定义
@@ -11,7 +10,7 @@ typedef struct _WNODE_HEADER
 	ULONG ProviderId;
 	union {
 		ULONG64 HistoricalContext;
-		struct {
+		struct s {
 			ULONG Version;
 			ULONG Linkage;
 		};
@@ -70,9 +69,9 @@ typedef enum _trace_type
 	start_trace = 1,
 	stop_trace = 2,
 	query_trace = 3,
-	syscall_trace = 4,
+	update_trace = 4,
 	flush_trace = 5
-}trace_type;
+} trace_type;
 
 namespace k_hook
 {
@@ -85,11 +84,11 @@ namespace k_hook
 	void* m_CkclWmiLoggerContext = nullptr;
 	
 	void** m_EtwpDebuggerDataSilo = nullptr;
-	void** m_GetCpuClock = nullptr;
+	void** m_GetCpuClock_ptr = nullptr;
 
 	unsigned long long m_original_GetCpuClock = 0;
 	unsigned long long m_HvlpReferenceTscPage = 0;
-	unsigned long long m_HvlGetQpcBias = 0;
+	unsigned long long m_HvlGetQpcBias_ptr = 0;
 
 	typedef __int64 (*FHvlGetQpcBias)();
 	FHvlGetQpcBias m_original_HvlGetQpcBias = nullptr;
@@ -100,7 +99,7 @@ namespace k_hook
 		const unsigned long tag = 'VMON';
 
 		// 申请结构体空间
-		CKCL_TRACE_PROPERTIES* property = (CKCL_TRACE_PROPERTIES*)ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, tag);
+		CKCL_TRACE_PROPERTIES* property = (CKCL_TRACE_PROPERTIES*)ExAllocatePool2(POOL_FLAG_NON_PAGED, PAGE_SIZE, tag);
 		if (!property)
 		{
 			DbgPrintEx(0, 0, "[%s] allocate ckcl trace propertice struct fail \n", __FUNCTION__);
@@ -108,7 +107,7 @@ namespace k_hook
 		}
 
 		// 申请保存名称的空间
-		wchar_t* provider_name = (wchar_t*)ExAllocatePoolWithTag(NonPagedPool, 256 * sizeof(wchar_t), tag);
+		wchar_t* provider_name = (wchar_t*)ExAllocatePool2(POOL_FLAG_NON_PAGED, 256 * sizeof(wchar_t), tag);
 		if (!provider_name)
 		{
 			DbgPrintEx(0, 0, "[%s] allocate provider name fail \n", __FUNCTION__);
@@ -139,7 +138,7 @@ namespace k_hook
 
 		// 执行操作
 		unsigned long length = 0;
-		if (type == trace_type::syscall_trace) property->EnableFlags = 0x00000080;
+		if (type == trace_type::update_trace) property->EnableFlags = 0x00000080; // EVENT_TRACE_FLAG_SYSTEMCALL
 		NTSTATUS status = NtTraceControl(type, property, PAGE_SIZE, property, PAGE_SIZE, &length);
 
 		// 释放内存空间
@@ -235,12 +234,12 @@ namespace k_hook
 			// GetCpuClock还是一个函数指针
 			if (m_build_number <= 18363)
 			{
-				DbgPrintEx(0, 0, "[%s] fix 0x%p 0x%p \n", __FUNCTION__, m_GetCpuClock, MmIsAddressValid(m_GetCpuClock) ? *m_GetCpuClock : 0);
+				DbgPrintEx(0, 0, "[%s] fix 0x%p 0x%p \n", __FUNCTION__, m_GetCpuClock_ptr, MmIsAddressValid(m_GetCpuClock_ptr) ? *m_GetCpuClock_ptr : 0);
 
-				if (MmIsAddressValid(m_GetCpuClock) && MmIsAddressValid(*m_GetCpuClock))
+				if (MmIsAddressValid(m_GetCpuClock_ptr) && MmIsAddressValid(*m_GetCpuClock_ptr))
 				{
 					// 值不一样,必须重新挂钩
-					if (self_get_cpu_clock != *m_GetCpuClock)
+					if (self_get_cpu_clock != *m_GetCpuClock_ptr)
 					{
 						if (initialize(m_ssdt_call_back)) start();
 					}
@@ -248,6 +247,9 @@ namespace k_hook
 				else initialize(m_ssdt_call_back); // GetCpuClock无效后要重新获取
 			}
 		}
+
+		DbgPrintEx(0, 0, "[%s] detect routine thread terminated \n", __FUNCTION__);
+		PsTerminateSystemThread(STATUS_SUCCESS);
 	}
 
 	bool initialize(fssdt_call_back ssdt_call_back)
@@ -260,7 +262,7 @@ namespace k_hook
 		else m_ssdt_call_back = ssdt_call_back;
 
 		// 先尝试挂钩
-		if (!NT_SUCCESS(modify_trace_settings(syscall_trace)))
+		if (!NT_SUCCESS(modify_trace_settings(update_trace)))
 		{
 			// 无法开启CKCL
 			if (!NT_SUCCESS(modify_trace_settings(start_trace)))
@@ -270,7 +272,7 @@ namespace k_hook
 			}
 
 			// 再次尝试挂钩
-			if (!NT_SUCCESS(modify_trace_settings(syscall_trace)))
+			if (!NT_SUCCESS(modify_trace_settings(update_trace)))
 			{
 				DbgPrintEx(0, 0, "[%s] syscall ckcl fail \n", __FUNCTION__);
 				return false;
@@ -310,10 +312,10 @@ namespace k_hook
 		*   靠,Win11的偏移变成了0x18,看漏的害我调试这么久  -_-
 		*   这里总结一下,Win7和Win11都是偏移0x18,其它的是0x28
 		*/
-		if (m_build_number <= 7601 || m_build_number >= 22000) m_GetCpuClock = (void**)((unsigned long long)m_CkclWmiLoggerContext + 0x18); // Win7版本以及更旧, Win11也是
-		else m_GetCpuClock = (void**)((unsigned long long)m_CkclWmiLoggerContext + 0x28); // Win8 -> Win10全系统
-		if (!MmIsAddressValid(m_GetCpuClock)) return false;
-		DbgPrintEx(0, 0, "[%s] get cpu clock is 0x%p \n", __FUNCTION__, *m_GetCpuClock);
+		if (m_build_number <= 7601 || m_build_number >= 22000) m_GetCpuClock_ptr = (void**)((unsigned long long)m_CkclWmiLoggerContext + 0x18); // Win7版本以及更旧, Win11也是
+		else m_GetCpuClock_ptr = (void**)((unsigned long long)m_CkclWmiLoggerContext + 0x28); // Win8 -> Win10全系统
+		if (!MmIsAddressValid(m_GetCpuClock_ptr)) return false;
+		DbgPrintEx(0, 0, "[%s] get cpu clock is 0x%p \n", __FUNCTION__, *m_GetCpuClock_ptr);
 
 		// 拿到ssdt指针
 		m_syscall_table = PAGE_ALIGN(k_utils::get_syscall_entry(ntoskrnl));
@@ -339,10 +341,14 @@ namespace k_hook
 			address = k_utils::find_pattern_image(ntoskrnl,
 				"\x48\x8b\x05\x00\x00\x00\x00\x48\x85\xc0\x74\x00\x48\x83\x3d\x00\x00\x00\x00\x00\x74",
 				"xxx????xxxx?xxx?????x");
+			if (!address) 
+				address = k_utils::find_pattern_image(ntoskrnl, 
+				"\x48\x8b\x05\x00\x00\x00\x00\xe8\x00\x00\x00\x00\x48\x03\xd8\x48\x89\x1f",
+				"xxx????x????xxxxxx");
 			if (!address) return false;
-			m_HvlGetQpcBias = reinterpret_cast<unsigned long long>(reinterpret_cast<char*>(address) + 7 + *reinterpret_cast<int*>(reinterpret_cast<char*>(address) + 3));
-			DbgPrintEx(0, 0, "[%s] hvl get qpc bias is 0x%llX \n", __FUNCTION__, m_HvlGetQpcBias);
-			if (!m_HvlGetQpcBias) return false;
+			m_HvlGetQpcBias_ptr = reinterpret_cast<unsigned long long>(reinterpret_cast<char*>(address) + 7 + *reinterpret_cast<int*>(reinterpret_cast<char*>(address) + 3));
+			DbgPrintEx(0, 0, "[%s] hvl get qpc bias is 0x%llX \n", __FUNCTION__, m_HvlGetQpcBias_ptr);
+			if (!m_HvlGetQpcBias_ptr) return false;
 		}
 
 		return true;
@@ -353,7 +359,7 @@ namespace k_hook
 		if (!m_ssdt_call_back) return false;
 
 		// 无效指针
-		if (!MmIsAddressValid(m_GetCpuClock))
+		if (!MmIsAddressValid(m_GetCpuClock_ptr))
 		{
 			DbgPrintEx(0, 0, "[%s] get cpu clock vaild \n", __FUNCTION__);
 			return false;
@@ -372,27 +378,27 @@ namespace k_hook
 		if (m_build_number <= 18363)
 		{
 			// 直接修改函数指针
-			DbgPrintEx(0, 0, "[%s] get cpu clock is 0x%p\n", __FUNCTION__, *m_GetCpuClock);
-			*m_GetCpuClock = self_get_cpu_clock;
-			DbgPrintEx(0, 0, "[%s] update get cpu clock is 0x%p\n", __FUNCTION__, *m_GetCpuClock);
+			DbgPrintEx(0, 0, "[%s] get cpu clock is 0x%p\n", __FUNCTION__, *m_GetCpuClock_ptr);
+			*m_GetCpuClock_ptr = self_get_cpu_clock;
+			DbgPrintEx(0, 0, "[%s] update get cpu clock is 0x%p\n", __FUNCTION__, *m_GetCpuClock_ptr);
 		}
 		else
 		{
 			// 保存GetCpuClock原始值,退出时好恢复
-			m_original_GetCpuClock = (unsigned long long)(*m_GetCpuClock);
+			m_original_GetCpuClock = (unsigned long long)(*m_GetCpuClock_ptr);
 
 			/* 这里我们设置为2, 这样子才能调用off_140C00A30函数
 			*   其实该指针就是HalpTimerQueryHostPerformanceCounter函数
 			*   该函数里面又有两个函数指针,第一个就是HvlGetQpcBias,就是我们的目标
 			*/
-			*m_GetCpuClock = (void*)2;
-			DbgPrintEx(0, 0, "[%s] update get cpu clock is %p \n", __FUNCTION__, *m_GetCpuClock);
+			*m_GetCpuClock_ptr = (void*)2;
+			DbgPrintEx(0, 0, "[%s] update get cpu clock is %p \n", __FUNCTION__, *m_GetCpuClock_ptr);
 
 			// 保存旧HvlGetQpcBias地址,方便后面清理的时候复原环境
-			m_original_HvlGetQpcBias = (FHvlGetQpcBias)(*((unsigned long long*)m_HvlGetQpcBias));
+			m_original_HvlGetQpcBias = (FHvlGetQpcBias)(*((unsigned long long*)m_HvlGetQpcBias_ptr));
 
 			// 设置钩子
-			*((unsigned long long*)m_HvlGetQpcBias) = (unsigned long long)self_hvl_get_qpc_bias;
+			*((unsigned long long*)m_HvlGetQpcBias_ptr) = (unsigned long long)self_hvl_get_qpc_bias;
 			DbgPrintEx(0, 0, "[%s] update hvl get qpc bias is %p \n", __FUNCTION__, self_hvl_get_qpc_bias);
 		}
 
@@ -407,7 +413,7 @@ namespace k_hook
 			InitializeObjectAttributes(&att, 0, OBJ_KERNEL_HANDLE, 0, 0);
 			NTSTATUS status = PsCreateSystemThread(&h_thread, THREAD_ALL_ACCESS, &att, 0, &client, detect_routine, 0);
 			if (NT_SUCCESS(status)) ZwClose(h_thread);
-			DbgPrintEx(0, 0, "[%s] detect routine thread id is %d \n", __FUNCTION__, (int)client.UniqueThread);
+			DbgPrintEx(0, 0, "[%s] detect routine thread id is %d \n", __FUNCTION__, (int)(UINT_PTR)client.UniqueThread);
 		}
 
 		return true;
@@ -423,8 +429,8 @@ namespace k_hook
 		// Win10 1909以上系统需要恢复环境
 		if (m_build_number > 18363)
 		{
-			*((unsigned long long*)m_HvlGetQpcBias) = (unsigned long long)m_original_HvlGetQpcBias;
-			*m_GetCpuClock = (void*)m_original_GetCpuClock;
+			*((unsigned long long*)m_HvlGetQpcBias_ptr) = (unsigned long long)m_original_HvlGetQpcBias;
+			*m_GetCpuClock_ptr = (void*)m_original_GetCpuClock;
 		}
 
 		return result;

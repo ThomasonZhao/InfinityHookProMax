@@ -24,7 +24,7 @@ namespace k_utils
 		if (!length) return result;
 
 		const unsigned long tag = 'VMON';
-		PSYSTEM_MODULE_INFORMATION system_modules = (PSYSTEM_MODULE_INFORMATION)ExAllocatePoolWithTag(NonPagedPool, length, tag);
+		PSYSTEM_MODULE_INFORMATION system_modules = (PSYSTEM_MODULE_INFORMATION)ExAllocatePool2(POOL_FLAG_NON_PAGED, length, tag);
 		if (!system_modules) return result;
 
 		NTSTATUS status = ZwQuerySystemInformation(11, system_modules, length, 0);
